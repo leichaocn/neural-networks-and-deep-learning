@@ -23,6 +23,7 @@ import numpy as np
 
 #### Define the quadratic and cross-entropy cost functions
 
+# 二次代价函数
 class QuadraticCost(object):
 
     @staticmethod
@@ -38,9 +39,11 @@ class QuadraticCost(object):
         """Return the error delta from the output layer."""
         return (a-y) * sigmoid_prime(z)
 
-
+# 交叉熵代价函数
+# 之所以定义为类，是因为要实现两个功能
 class CrossEntropyCost(object):
 
+    # 代价函数
     @staticmethod
     def fn(a, y):
         """Return the cost associated with an output ``a`` and desired output
@@ -51,8 +54,12 @@ class CrossEntropyCost(object):
         to the correct value (0.0).
 
         """
+        # nan_to_num()是为了处理log里的自变量非常接近0的情况
         return np.sum(np.nan_to_num(-y*np.log(a)-(1-y)*np.log(1-a)))
 
+    # 输出层的误差
+    # 误差=代价导数*激活导数
+    # 之所以直接求误差，是因为交叉熵代价导数为(y/a)-[(1-y)/(1-a)],当a为1或者0时，均比较尴尬。
     @staticmethod
     def delta(z, a, y):
         """Return the error delta from the output layer.  Note that the
@@ -78,11 +85,16 @@ class Network(object):
         method).
 
         """
+        # 层数
         self.num_layers = len(sizes)
+        # 形状，例如[2,3,1]
         self.sizes = sizes
+        # 使用高斯随机变量对权重进行初始化
         self.default_weight_initializer()
+        # 默认为交叉熵代价
         self.cost=cost
 
+    # 之所以把权重初始化独立出来，是为了方便更改权重的初始化。
     def default_weight_initializer(self):
         """Initialize each weight using a Gaussian distribution with mean 0
         and standard deviation 1 over the square root of the number of
@@ -96,7 +108,9 @@ class Network(object):
         layers.
 
         """
+        # 均值为0，标准差为1
         self.biases = [np.random.randn(y, 1) for y in self.sizes[1:]]
+        # 均值为0，标准差为1/上一层神经元个数开根号
         self.weights = [np.random.randn(y, x)/np.sqrt(x)
                         for x, y in zip(self.sizes[:-1], self.sizes[1:])]
 
@@ -156,36 +170,38 @@ class Network(object):
         n = len(training_data)
         evaluation_cost, evaluation_accuracy = [], []
         training_cost, training_accuracy = [], []
-        for j in xrange(epochs):
+        for j in range(epochs):
             random.shuffle(training_data)
             mini_batches = [
                 training_data[k:k+mini_batch_size]
-                for k in xrange(0, n, mini_batch_size)]
+                for k in range(0, n, mini_batch_size)]
             for mini_batch in mini_batches:
                 self.update_mini_batch(
                     mini_batch, eta, lmbda, len(training_data))
-            print "Epoch %s training complete" % j
+            print("Epoch %s training complete" % j)
+            # 训练代价(可借此来确定学习率阈值)
             if monitor_training_cost:
                 cost = self.total_cost(training_data, lmbda)
                 training_cost.append(cost)
-                print "Cost on training data: {}".format(cost)
+                print("Cost on training data: {}".format(cost))
+            # 训练准确率
             if monitor_training_accuracy:
                 accuracy = self.accuracy(training_data, convert=True)
                 training_accuracy.append(accuracy)
-                print "Accuracy on training data: {} / {}".format(
-                    accuracy, n)
+                print("Accuracy on training data: {} / {}".format(accuracy, n))
+            # 测试代价
             if monitor_evaluation_cost:
                 cost = self.total_cost(evaluation_data, lmbda, convert=True)
                 evaluation_cost.append(cost)
-                print "Cost on evaluation data: {}".format(cost)
+                print("Cost on evaluation data: {}".format(cost))
+            # 测试准确率（这里后期可加early stopping，防止过拟合；也可增加可变学习率计划表，10次未改善就减半学习率）
             if monitor_evaluation_accuracy:
                 accuracy = self.accuracy(evaluation_data)
                 evaluation_accuracy.append(accuracy)
-                print "Accuracy on evaluation data: {} / {}".format(
-                    self.accuracy(evaluation_data), n_data)
-            print
-        return evaluation_cost, evaluation_accuracy, \
-            training_cost, training_accuracy
+                print("Accuracy on evaluation data: {} / {}".format(self.accuracy(evaluation_data), n_data))
+            # print
+        # 返回四个list，每个list的元素个数和mini-batch的个数一样。用于绘图，理解网络行为。
+        return evaluation_cost, evaluation_accuracy, training_cost, training_accuracy
 
     def update_mini_batch(self, mini_batch, eta, lmbda, n):
         """Update the network's weights and biases by applying gradient
@@ -201,6 +217,14 @@ class Network(object):
             delta_nabla_b, delta_nabla_w = self.backprop(x, y)
             nabla_b = [nb+dnb for nb, dnb in zip(nabla_b, delta_nabla_b)]
             nabla_w = [nw+dnw for nw, dnw in zip(nabla_w, delta_nabla_w)]
+
+        # nabla_w是梯度向量，nw为其元素
+        # w是矩阵，nw也是矩阵，形状均为本层个数*上层个数
+        # nw是矩阵，尺寸同w，nw是在整个mini_batch上，每个元素均为累加每一个样本代价对该位置的权重的误差（代价对本）求出来的总和。
+        # eta*(lmbda/n)即为L2正则化，
+        # 注意：只有权重需要正则，偏置不需要。
+        # 注意：n为训练集的样本总数，训练集样本越多，正则化越弱。
+        # 也可以在此处加入L1正则。
         self.weights = [(1-eta*(lmbda/n))*w-(eta/len(mini_batch))*nw
                         for w, nw in zip(self.weights, nabla_w)]
         self.biases = [b-(eta/len(mini_batch))*nb
@@ -232,7 +256,7 @@ class Network(object):
         # second-last layer, and so on.  It's a renumbering of the
         # scheme in the book, used here to take advantage of the fact
         # that Python can use negative indices in lists.
-        for l in xrange(2, self.num_layers):
+        for l in range(2, self.num_layers):
             z = zs[-l]
             sp = sigmoid_prime(z)
             delta = np.dot(self.weights[-l+1].transpose(), delta) * sp
@@ -287,8 +311,10 @@ class Network(object):
             np.linalg.norm(w)**2 for w in self.weights)
         return cost
 
+    # 保存模型
     def save(self, filename):
         """Save the neural network to the file ``filename``."""
+        # 之所以使用JSON，使用JSON显式地进行序列化可以很容易地确保旧网络仍然会加载。
         data = {"sizes": self.sizes,
                 "weights": [w.tolist() for w in self.weights],
                 "biases": [b.tolist() for b in self.biases],
